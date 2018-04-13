@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "third_party/randen/randen.h"
+#include "randen.h"
 
 #include <string.h>     // memcpy
 
-#include "third_party/randen/vector128.h"
+#include "vector128.h"
 
 namespace randen {
 namespace {

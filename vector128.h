@@ -13,8 +13,8 @@
 // limitations under the License.
 
 // Wrappers for platform-specific 128-bit vectors.
-#ifndef THIRD_PARTY_RANDEN_VECTOR128_H_
-#define THIRD_PARTY_RANDEN_VECTOR128_H_
+#ifndef VECTOR128_H_
+#define VECTOR128_H_
 
 #include <stdint.h>     // uint64_t
 
@@ -164,4 +164,4 @@ static RANDEN_INLINE V AES(const V state, const V round_key) {
 
 }  // namespace randen
 
-#endif  // THIRD_PARTY_RANDEN_VECTOR128_H_
+#endif  // VECTOR128_H_

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef THIRD_PARTY_RANDEN_NANOBENCHMARK_H_
-#define THIRD_PARTY_RANDEN_NANOBENCHMARK_H_
+#ifndef NANOBENCHMARK_H_
+#define NANOBENCHMARK_H_
 
 // Benchmarks functions of a single integer argument with realistic branch
 // prediction hit rates. Uses a robust estimator to summarize the measurements.
@@ -52,7 +52,21 @@
 #include <stddef.h>
 #include <stdint.h>
 
-namespace randen {
+namespace nanobenchmark {
+
+namespace platform {
+
+// Ensures the thread is running on the specified cpu, and no others.
+// Reduces caused by desynchronized socket RDTSC and context switches.
+// If "cpu" is negative, pin to the currently running core.
+void PinThreadToCPU(const int cpu = -1);
+
+// Returns tick rate, useful for converting measurements to seconds. Invariant
+// means the tick counter frequency is independent of CPU throttling or sleep.
+// This call may be expensive, callers should cache the result.
+double InvariantTicksPerSecond();
+
+}  // namespace platform
 
 // Input influencing the function being measured (e.g. number of bytes to copy).
 using FuncInput = size_t;
@@ -101,10 +115,11 @@ struct Params {
   // prevents infinite loops.
   size_t max_evals = 9;
 
-  // Whether to print additional statistics.
+  // Whether to print additional statistics to stdout.
   bool verbose = true;
 };
 
+// Measurement result for each unique input.
 struct Result {
   FuncInput input;
 
@@ -114,25 +129,6 @@ struct Result {
   // Measure of variability (median absolute deviation relative to "ticks").
   float variability;
 };
-
-// Noncopyable, moveable, dynamically allocated array returned by Measure*.
-struct ScopedArray {
-  explicit ScopedArray(const size_t num_results);
-  ~ScopedArray();
-  ScopedArray(const ScopedArray&) = delete;
-  ScopedArray& operator=(const ScopedArray&) = delete;
-  ScopedArray(ScopedArray&&) = default;
-  ScopedArray& operator=(ScopedArray&&) = default;
-
-  Result* results;
-  const size_t num_results;
-};
-
-// Returns number of array elements. Useful for num_inputs arguments below.
-template <size_t N>
-constexpr size_t NumInputs(const FuncInput (&inputs)[N]) {
-  return N;
-}
 
 // Precisely measures the number of ticks elapsed when calling "func" with the
 // given inputs, shuffled to ensure realistic branch prediction hit rates.
@@ -144,9 +140,11 @@ constexpr size_t NumInputs(const FuncInput (&inputs)[N]) {
 //   represents a distribution, so a value's frequency should reflect its
 //   probability in the real application. Order does not matter; for example, a
 //   uniform distribution over [0, 4) could be represented as {3,0,2,1}.
-ScopedArray Measure(const Func func, const uint8_t* arg,
-                    const FuncInput* inputs, const size_t num_inputs,
-                    const Params& p = Params());
+// Returns how many Result were written to "results": one per unique input, or
+//   zero if the measurement failed (an error message goes to stderr).
+size_t Measure(const Func func, const uint8_t* arg, const FuncInput* inputs,
+               const size_t num_inputs, Result* results,
+               const Params& p = Params());
 
 // Per-copt namespace prevents leaking generated code into other modules.
 namespace NB_NAMESPACE {
@@ -157,20 +155,20 @@ static FuncOutput CallClosure(const Closure* f, const FuncInput input) {
   return (*f)(input);
 }
 
+}  // namespace NB_NAMESPACE
+
 // Same as Measure, except "closure" is typically a lambda function of
 // FuncInput -> FuncOutput with a capture list.
 template <class Closure>
-static inline ScopedArray MeasureClosure(const Closure& closure,
-                                         const FuncInput* inputs,
-                                         const size_t num_inputs,
-                                         const Params& p = Params()) {
-  return Measure(reinterpret_cast<Func>(&CallClosure<Closure>),
+static inline size_t MeasureClosure(const Closure& closure,
+                                    const FuncInput* inputs,
+                                    const size_t num_inputs, Result* results,
+                                    const Params& p = Params()) {
+  return Measure(reinterpret_cast<Func>(&NB_NAMESPACE::CallClosure<Closure>),
                  reinterpret_cast<const uint8_t*>(&closure), inputs, num_inputs,
-                 p);
+                 results, p);
 }
 
-}  // namespace NB_NAMESPACE
+}  // namespace nanobenchmark
 
-}  // namespace randen
-
-#endif  // THIRD_PARTY_RANDEN_NANOBENCHMARK_H_
+#endif  // NANOBENCHMARK_H_

@@ -15,10 +15,11 @@
 #include <smmintrin.h>  // SSE4
 #include <stdio.h>
 #include <stdlib.h>     // abort
+#include <unistd.h>     // sleep
 #include <wmmintrin.h>  // AES
 
-#include "third_party/randen/nanobenchmark.h"
-#include "third_party/randen/randen.h"
+#include "nanobenchmark.h"
+#include "randen.h"
 
 #define ASSERT_TRUE(condition)                     \
   while (!(condition)) {                           \
@@ -26,7 +27,7 @@
     abort();                                       \
   }
 
-namespace randen {
+namespace nanobenchmark {
 namespace {
 
 uint64_t AES(const void*, const FuncInput num_rounds) {
@@ -43,12 +44,13 @@ uint64_t AES(const void*, const FuncInput num_rounds) {
 
 template <size_t N>
 void MeasureAES(const FuncInput (&inputs)[N]) {
-  const auto& ret = Measure(&AES, nullptr, inputs, N);
-  for (size_t i = 0; i < ret.num_results; ++i) {
-    const Result& r = ret.results[i];
-    printf("%5zu: %6.2f ticks; MAD=%4.2f%%\n", r.input, r.ticks,
-           r.variability * 100.0);
-    ASSERT_TRUE(r.variability < 1E-4);
+  Result results[N];
+  Params params;
+  params.max_evals = 4;  // avoid test timeout
+  const size_t num_results = Measure(&AES, nullptr, inputs, N, results, params);
+  for (size_t i = 0; i < num_results; ++i) {
+    printf("%5zu: %6.2f ticks; MAD=%4.2f%%\n", results[i].input,
+           results[i].ticks, results[i].variability * 100.0);
   }
 }
 
@@ -61,16 +63,17 @@ uint64_t Div(const void*, FuncInput in) {
 
 template <size_t N>
 void MeasureDiv(const FuncInput (&inputs)[N]) {
-  const auto& ret = Measure(&Div, nullptr, inputs, N);
-  for (size_t i = 0; i < ret.num_results; ++i) {
-    const Result& r = ret.results[i];
-    printf("%5zu: %6.2f ticks; MAD=%4.2f%%\n", r.input, r.ticks,
-           r.variability * 100.0);
-    ASSERT_TRUE(r.variability < 1E-4);
+  Result results[N];
+  Params params;
+  params.max_evals = 4;  // avoid test timeout
+  const size_t num_results = Measure(&Div, nullptr, inputs, N, results, params);
+  for (size_t i = 0; i < num_results; ++i) {
+    printf("%5zu: %6.2f ticks; MAD=%4.2f%%\n", results[i].input,
+           results[i].ticks, results[i].variability * 100.0);
   }
 }
 
-Randen<uint32_t> rng;
+randen::Randen<uint32_t> rng;
 
 // A function whose runtime depends on rng.
 uint64_t Random(const void* arg, FuncInput in) {
@@ -81,30 +84,55 @@ uint64_t Random(const void* arg, FuncInput in) {
 // Ensure the measured variability is high.
 template <size_t N>
 void MeasureRandom(const FuncInput (&inputs)[N]) {
+  Result results[N];
   Params p;
-  p.max_evals = 4;
+  p.max_evals = 4;  // avoid test timeout
   p.verbose = false;
-  const auto& ret = Measure(&Random, nullptr, inputs, N, p);
-  for (size_t i = 0; i < ret.num_results; ++i) {
-    const Result& r = ret.results[i];
-    ASSERT_TRUE(r.variability > 1E-3);
+  const size_t num_results = Measure(&Random, nullptr, inputs, N, results, p);
+  for (size_t i = 0; i < num_results; ++i) {
+    ASSERT_TRUE(results[i].variability > 1E-3);
   }
 }
 
-void RunAll(const int unpredictable) {
+template <size_t N>
+void EnsureLongMeasurementFails(const FuncInput (&inputs)[N]) {
+  printf("Expect a 'measurement failed' below:\n");
+  Result results[N];
+  const size_t num_results = MeasureClosure(
+      [](const FuncInput input) {
+        // Loop until the sleep succeeds (not interrupted by signal). We assume
+        // >= 512 MHz, so 2 seconds will exceed the 1 << 30 tick safety limit.
+        while (sleep(2) != 0) {
+        }
+        return input;
+      },
+      inputs, N, results);
+  ASSERT_TRUE(num_results == 0);
+}
+
+void RunAll(const int argc, char* argv[]) {
+  // Avoid migrating between cores - important on multi-socket systems.
+  int cpu = -1;
+  if (argc == 2) {
+    cpu = strtol(argv[1], nullptr, 10);
+  }
+  platform::PinThreadToCPU(cpu);
+
   // unpredictable == 1 but the compiler doesn't know that.
+  const int unpredictable = argc != 999;
   static const FuncInput inputs[] = {static_cast<FuncInput>(unpredictable) + 2,
                                      static_cast<FuncInput>(unpredictable + 9)};
 
   MeasureAES(inputs);
   MeasureDiv(inputs);
   MeasureRandom(inputs);
+  EnsureLongMeasurementFails(inputs);
 }
 
 }  // namespace
-}  // namespace randen
+}  // namespace nanobenchmark
 
 int main(int argc, char* argv[]) {
-  randen::RunAll(argc);
+  nanobenchmark::RunAll(argc, argv);
   return 0;
 }

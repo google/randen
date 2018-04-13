@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "third_party/randen/nanobenchmark.h"
-#include "third_party/randen/randen.h"
+#include "nanobenchmark.h"
+#include "randen.h"
 
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>  // abort
 #include <string.h>  // memcpy
+#include <time.h>  // clock_gettime
 #include <algorithm>  // sort
 #include <atomic>
 #include <limits>
@@ -28,26 +29,33 @@
 // Architecture
 #if defined(__x86_64__) || defined(_M_X64)
 #define NB_ARCH_X86
+#if !defined(_MSC_VER)
+#include <cpuid.h>  // NOLINT
+#endif
 #elif defined(__powerpc64__) || defined(_M_PPC)
 #define NB_ARCH_PPC
+#include <sys/platform/ppc.h>  // NOLINT __ppc_get_timebase_freq
 #elif defined(__aarch64__)
 #define NB_ARCH_ARM
-#error "Port"
+#else
+#error "Please add support for this architecture"
 #endif
 
-#if defined(NB_ARCH_X86) && !defined(_MSC_VER)
-#include <cpuid.h>
+// OS
+#if defined(_WIN32) || defined(_WIN64)
+#define NB_OS_WIN
+#define NOMINMAX
+#include <windows.h>  // NOLINT
+#elif defined(__linux__)
+#define NB_OS_LINUX
+#include <sched.h>  // NOLINT
+#else
+#error "Please add support for this OS"
 #endif
 
-#ifdef NB_ARCH_PPC
-#include <sys/platform/ppc.h>  // __ppc_get_timebase_freq
-#endif
-
-namespace randen {
-namespace {
-
-// For code folding.
+namespace nanobenchmark {
 namespace platform {
+namespace {
 
 // Enables sanity checks that verify correct operation at the cost of
 // longer benchmark runs.
@@ -55,10 +63,10 @@ namespace platform {
 #define NANOBENCHMARK_ENABLE_CHECKS 0
 #endif
 
-#define NANOBENCHMARK_CHECK_ALWAYS(condition)                    \
-  while (!(condition)) {                                         \
-    printf("Nanobenchmark check failed at line %d\n", __LINE__); \
-    abort();                                                     \
+#define NANOBENCHMARK_CHECK_ALWAYS(condition)                             \
+  while (!(condition)) {                                                  \
+    fprintf(stderr, "Nanobenchmark check failed at line %d\n", __LINE__); \
+    abort();                                                              \
   }
 
 #if NANOBENCHMARK_ENABLE_CHECKS
@@ -145,18 +153,54 @@ double NominalClockRate() {
 
 #endif  // NB_ARCH_X86
 
+}  // namespace
+
+void PinThreadToCPU(int cpu) {
+  if (cpu < 0) {
+    // We might migrate to another CPU before pinning below, but at least cpu
+    // will be one of the CPUs on which this thread ran.
+#if defined(NB_OS_WIN)
+    cpu = static_cast<int>(GetCurrentProcessorNumber());
+#elif defined(NB_OS_LINUX)
+    cpu = sched_getcpu();
+#else
+#error "Please add support for this OS"
+#endif
+    NANOBENCHMARK_CHECK_ALWAYS(cpu >= 0);
+  }
+
+#if defined(NB_OS_WIN)
+  const HANDLE hThread = GetCurrentThread();
+  const DWORD_PTR prev = SetThreadAffinityMask(hThread, 1ULL << cpu);
+  NANOBENCHMARK_CHECK_ALWAYS(prev != 0);
+#elif defined(NB_OS_LINUX)
+  const pid_t pid = 0;  // current thread
+  cpu_set_t set;
+  CPU_ZERO(&set);
+  CPU_SET(cpu, &set);
+  const int err = sched_setaffinity(pid, sizeof(set), &set);
+  NANOBENCHMARK_CHECK_ALWAYS(err == 0);
+#else
+#error "Please add support for this OS"
+#endif
+}
+
 // Returns tick rate. Invariant means the tick counter frequency is independent
 // of CPU throttling or sleep. May be expensive, caller should cache the result.
 double InvariantTicksPerSecond() {
-#ifdef NB_ARCH_PPC
+#if defined(NB_ARCH_PPC)
   return __ppc_get_timebase_freq();
-#else
+#elif defined(NB_ARCH_X86)
   // We assume the TSC is invariant; it is on all recent Intel/AMD CPUs.
   return NominalClockRate();
+#else
+  // Fall back to clock_gettime nanoseconds.
+  return 1E9;
 #endif
 }
 
 }  // namespace platform
+namespace {
 
 // Prevents the compiler from eliding the computations that led to "output".
 template <class T>
@@ -231,12 +275,10 @@ namespace timer {
 // divide by InvariantTicksPerSecond.
 inline uint64_t Start64() {
   uint64_t t;
-#ifdef NB_ARCH_PPC
+#if defined(NB_ARCH_PPC)
   asm volatile("mfspr %0, %1" : "=r"(t) : "i"(268));
-#elif defined(NB_ARCH_ARM)
-  asm volatile("mrs %0, cntvct_el0" : "=r"(t));
 #elif defined(NB_ARCH_X86)
-#ifdef _MSC_VER
+#if defined(_MSC_VER)
   _ReadWriteBarrier();
   _mm_lfence();
   _ReadWriteBarrier();
@@ -258,19 +300,20 @@ inline uint64_t Start64() {
       : "rdx", "memory", "cc");
 #endif
 #else
-#error "Port"
+  // Fall back to OS - unsure how to reliably query cntvct_el0 frequency.
+  timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  t = ts.tv_sec * 1000000000LL + ts.tv_nsec;
 #endif
   return t;
 }
 
 inline uint64_t Stop64() {
   uint64_t t;
-#ifdef NB_ARCH_PPC
+#if defined(NB_ARCH_PPC)
   asm volatile("mfspr %0, %1" : "=r"(t) : "i"(268));
-#elif defined(NB_ARCH_ARM)
-  asm volatile("mrs %0, cntvct_el0" : "=r"(t));
 #elif defined(NB_ARCH_X86)
-#ifdef _MSC_VER
+#if defined(_MSC_VER)
   _ReadWriteBarrier();
   unsigned aux;
   t = __rdtscp(&aux);
@@ -291,7 +334,7 @@ inline uint64_t Stop64() {
       : "rcx", "rdx", "memory", "cc");
 #endif
 #else
-#error "Port"
+  t = Start64();
 #endif
   return t;
 }
@@ -301,8 +344,8 @@ inline uint64_t Stop64() {
 // timestamp overflows about once a second.
 inline uint32_t Start32() {
   uint32_t t;
-#ifdef NB_ARCH_X86
-#if _MSC_VER
+#if defined(NB_ARCH_X86)
+#if defined(_MSC_VER)
   _ReadWriteBarrier();
   _mm_lfence();
   _ReadWriteBarrier();
@@ -328,8 +371,8 @@ inline uint32_t Start32() {
 
 inline uint32_t Stop32() {
   uint32_t t;
-#ifdef NB_ARCH_X86
-#if _MSC_VER
+#if defined(NB_ARCH_X86)
+#if defined(_MSC_VER)
   _ReadWriteBarrier();
   unsigned aux;
   t = static_cast<uint32_t>(__rdtscp(&aux));
@@ -518,6 +561,7 @@ Ticks SampleUntilStable(const double max_rel_mad, double* rel_mad,
   // Percentage is too strict for tiny differences, so also allow a small
   // absolute "median absolute deviation".
   const Ticks max_abs_mad = (timer_resolution + 99) / 100;
+  *rel_mad = 0.0;  // ensure initialized
 
   for (size_t eval = 0; eval < p.max_evals; ++eval, samples_per_eval *= 2) {
     samples.reserve(samples.size() + samples_per_eval);
@@ -534,7 +578,7 @@ Ticks SampleUntilStable(const double max_rel_mad, double* rel_mad,
       // For "few" (depends also on the variance) samples, Median is safer.
       est = robust_statistics::Median(samples.data(), samples.size());
     }
-    NANOBENCHMARK_CHECK_ALWAYS(est != 0);
+    NANOBENCHMARK_CHECK(est != 0);
 
     // Median absolute deviation (mad) is a robust measure of 'variability'.
     const Ticks abs_mad = robust_statistics::MedianAbsoluteDeviation(
@@ -568,18 +612,24 @@ InputVec UniqueInputs(const FuncInput* inputs, const size_t num_inputs) {
   return unique;
 }
 
-// Returns how often we need to call func for sufficient precision.
+// Returns how often we need to call func for sufficient precision, or zero
+// on failure (e.g. the elapsed time is too long for a 32-bit tick count).
 size_t NumSkip(const Func func, const uint8_t* arg, const InputVec& unique,
                const Params& p) {
   // Min elapsed ticks for any input.
   Ticks min_duration = ~0u;
 
   for (const FuncInput input : unique) {
-    // Ensure the 32-bit timer won't overflow.
+    // Make sure a 32-bit timer is sufficient.
     const uint64_t t0 = timer::Start64();
     PreventElision(func(arg, input));
     const uint64_t t1 = timer::Stop64();
-    NANOBENCHMARK_CHECK_ALWAYS((t1 - t0) < (1ULL << 30));
+    const uint64_t elapsed = t1 - t0;
+    if (elapsed >= (1ULL << 30)) {
+      fprintf(stderr, "Measurement failed: need 64-bit timer for input=%lu\n",
+              input);
+      return 0;
+    }
 
     double rel_mad;
     const Ticks total = SampleUntilStable(
@@ -591,8 +641,8 @@ size_t NumSkip(const Func func, const uint8_t* arg, const InputVec& unique,
   // Number of repetitions required to reach the target resolution.
   const size_t max_skip = p.precision_divisor;
   // Number of repetitions given the estimated duration.
-  const size_t num_skip = (max_skip + min_duration - 1) / min_duration;
-  NANOBENCHMARK_CHECK_ALWAYS(num_skip != 0);
+  const size_t num_skip =
+      min_duration == 0 ? 0 : (max_skip + min_duration - 1) / min_duration;
   if (p.verbose) {
     printf("res=%u max_skip=%zu min_dur=%u num_skip=%zu\n", timer_resolution,
            max_skip, min_duration, num_skip);
@@ -614,7 +664,7 @@ InputVec ReplicateInputs(const FuncInput* inputs, const size_t num_inputs,
   for (size_t i = 0; i < p.subset_ratio * num_skip; ++i) {
     full.insert(full.end(), inputs, inputs + num_inputs);
   }
-  Randen<uint32_t> rng;
+  randen::Randen<uint32_t> rng;
   std::shuffle(full.begin(), full.end(), rng);
   return full;
 }
@@ -629,7 +679,7 @@ void FillSubset(const InputVec& full, const FuncInput input_to_skip,
   std::iota(omit.begin(), omit.end(), 0);
   // omit[] is the same on every call, but that's OK because they identify the
   // Nth instance of input_to_skip, so the position within full[] differs.
-  Randen<uint32_t> rng;
+  randen::Randen<uint32_t> rng;
   std::shuffle(omit.begin(), omit.end(), rng);
   omit.resize(num_skip);
   std::sort(omit.begin(), omit.end());
@@ -653,9 +703,9 @@ void FillSubset(const InputVec& full, const FuncInput input_to_skip,
       (*subset)[idx_subset++] = next;
     }
   }
-  NANOBENCHMARK_CHECK_ALWAYS(idx_subset == subset->size());
-  NANOBENCHMARK_CHECK_ALWAYS(idx_omit == omit.size());
-  NANOBENCHMARK_CHECK_ALWAYS(occurrence == count - 1);
+  NANOBENCHMARK_CHECK(idx_subset == subset->size());
+  NANOBENCHMARK_CHECK(idx_omit == omit.size());
+  NANOBENCHMARK_CHECK(occurrence == count - 1);
 }
 
 // Returns total ticks elapsed for all inputs.
@@ -691,19 +741,13 @@ Ticks Overhead(const uint8_t* arg, const InputVec* inputs, const Params& p) {
 
 }  // namespace
 
-ScopedArray::ScopedArray(const size_t num_results)
-    : results(new Result[num_results]), num_results(num_results) {}
-
-ScopedArray::~ScopedArray() { delete[] results; }
-
-ScopedArray Measure(const Func func, const uint8_t* arg,
-                    const FuncInput* inputs, const size_t num_inputs,
-                    const Params& p) {
+size_t Measure(const Func func, const uint8_t* arg, const FuncInput* inputs,
+               const size_t num_inputs, Result* results, const Params& p) {
   NANOBENCHMARK_CHECK(num_inputs != 0);
   const InputVec& unique = UniqueInputs(inputs, num_inputs);
-  ScopedArray ret(unique.size());
 
   const size_t num_skip = NumSkip(func, arg, unique, p);  // never 0
+  if (num_skip == 0) return 0;  // NumSkip already printed error message
   const float mul = 1.0f / static_cast<int>(num_skip);
 
   const InputVec& full =
@@ -712,7 +756,11 @@ ScopedArray Measure(const Func func, const uint8_t* arg,
 
   const Ticks overhead = Overhead(arg, &full, p);
   const Ticks overhead_skip = Overhead(arg, &subset, p);
-  NANOBENCHMARK_CHECK_ALWAYS(overhead >= overhead_skip);
+  if (overhead < overhead_skip) {
+    fprintf(stderr, "Measurement failed: overhead %u < %u\n", overhead,
+            overhead_skip);
+    return 0;
+  }
 
   if (p.verbose) {
     printf("#inputs=%5zu,%5zu overhead=%5u,%5u\n", full.size(), subset.size(),
@@ -726,14 +774,18 @@ ScopedArray Measure(const Func func, const uint8_t* arg,
     FillSubset(full, unique[i], num_skip, &subset);
     const Ticks total_skip = TotalDuration(func, arg, &subset, p, &max_rel_mad);
 
-    NANOBENCHMARK_CHECK_ALWAYS(total >= total_skip);
+    if (total < total_skip) {
+      fprintf(stderr, "Measurement failed: total %u < %u\n", total, total_skip);
+      return 0;
+    }
+
     const Ticks duration = (total - overhead) - (total_skip - overhead_skip);
-    ret.results[i].input = unique[i];
-    ret.results[i].ticks = duration * mul;
-    ret.results[i].variability = max_rel_mad;
+    results[i].input = unique[i];
+    results[i].ticks = duration * mul;
+    results[i].variability = max_rel_mad;
   }
 
-  return ret;
+  return unique.size();
 }
 
-}  // namespace randen
+}  // namespace nanobenchmark

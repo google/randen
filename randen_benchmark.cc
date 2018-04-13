@@ -14,19 +14,25 @@
 
 // Please first run `blaze shutdown` and disable Turbo Boost and CPU throttling!
 
-#include "third_party/randen/randen.h"
-
-#include <stdio.h>
-#include <algorithm>
-#include <random>
-#include "third_party/pcg_random/include/pcg_random.hpp"
-#include "third_party/randen/nanobenchmark.h"
+#include "randen.h"
 
 // std::uniform_real_distribution is slow (x87 instructions) and non-uniform.
 // When 0, we use a custom implementation instead.
 #define ENABLE_STD_UNIFORM_REAL 0
 
-namespace randen {
+// If !ENABLE_STD_UNIFORM_REAL, we can use absl distributions instead.
+#define USE_ABSL_DISTRIBUTIONS 0
+
+#include <stdio.h>
+#include <algorithm>
+#include <random>
+#if USE_ABSL_DISTRIBUTIONS
+#include "third_party/absl/random/distributions.h"
+#endif
+#include "third_party/pcg_random/include/pcg_random.hpp"
+#include "nanobenchmark.h"
+
+namespace nanobenchmark {
 namespace {
 
 #define ASSERT_TRUE(condition)                           \
@@ -61,7 +67,19 @@ class BenchmarkShuffle {
   template <class Engine>
   uint64_t operator()(const uint64_t input, Engine& engine) const {
     ints_to_shuffle_[0] = static_cast<int>(input & 0xFFFF);
+#if USE_ABSL_DISTRIBUTIONS
+    // 2-4 times faster overall due to absl::uniform_int_distribution, as
+    // opposed to the std:: distribution used inside std::shuffle.
+    using Dist = absl::uniform_int_distribution<>;
+    using Param = typename Dist::param_type;
+    Dist d;
+    size_t n = ints_to_shuffle_.size();
+    for (size_t i = n - 1; i > 0; --i) {
+      std::swap(ints_to_shuffle_[i], ints_to_shuffle_[d(engine, Param(0, i))]);
+    }
+#else
     std::shuffle(ints_to_shuffle_.begin(), ints_to_shuffle_.end(), engine);
+#endif
     return ints_to_shuffle_[0];
   }
 
@@ -84,7 +102,11 @@ class BenchmarkSample {
     std::copy(population_.begin(), population_.begin() + kNumChosen,
               chosen_.begin());
     for (int i = kNumChosen; i < kNum64; ++i) {
+#if USE_ABSL_DISTRIBUTIONS
+      absl::uniform_int_distribution<int> dist(0, i);  // closed interval
+#else
       std::uniform_int_distribution<int> dist(0, i);  // closed interval
+#endif
       const int index = dist(engine);
       if (index < kNumChosen) {
         chosen_[index] = population_[i];
@@ -120,7 +142,7 @@ class BenchmarkMonteCarlo {
  private:
   template <class Engine>
   double Uniform01(Engine& engine) const {
-#if ENABLE_STD_UNIFORM_REAL
+#if ENABLE_STD_UNIFORM_REAL || USE_ABSL_DISTRIBUTIONS
     return dist_(engine);
 #else
     uint64_t bits = engine();
@@ -138,6 +160,8 @@ class BenchmarkMonteCarlo {
 
 #if ENABLE_STD_UNIFORM_REAL
   mutable std::uniform_real_distribution<> dist_;
+#elif USE_ABSL_DISTRIBUTIONS
+  mutable absl::uniform_real_distribution<> dist_;
 #endif
 };
 
@@ -147,26 +171,28 @@ void RunBenchmark(const char* caption, const Benchmark& benchmark,
   printf("%6s: ", caption);
   const size_t kNumInputs = 1;
   const FuncInput inputs[kNumInputs] = {Benchmark::kNum64};
+  Result results[kNumInputs];
 
   Params p;
   p.verbose = false;
   p.target_rel_mad = 0.002;
-  const auto& ret = NB_NAMESPACE::MeasureClosure(
+  const size_t num_results = MeasureClosure(
       [&benchmark, &engine](const FuncInput input) {
         return benchmark(input, engine);
       },
-      inputs, kNumInputs, p);
-  ASSERT_TRUE(ret.num_results == kNumInputs);
-  const Result& r = ret.results[0];
-  const double mul = 1.0 / (r.input * sizeof(uint64_t));
-  printf("%6zu: %4.2f ticks; MAD=%4.2f%%\n", r.input, r.ticks * mul,
-         r.variability * 100.0);
+      inputs, kNumInputs, results, p);
+  ASSERT_TRUE(num_results == kNumInputs);
+  for (size_t i = 0; i < num_results; ++i) {
+    const double mul = 1.0 / (results[i].input * sizeof(uint64_t));
+    printf("%6zu: %4.2f ticks; MAD=%4.2f%%\n", results[i].input,
+           results[i].ticks * mul, results[i].variability * 100.0);
+  }
 }
 
 template <class Benchmark>
 void ForeachEngine(const Benchmark& benchmark) {
   // Random 'engines' under consideration (all 64-bit):
-  Randen<uint64_t> eng_randen;
+  randen::Randen<uint64_t> eng_randen;
   // Quoting from pcg_random.hpp: "the c variants offer better crypographic
   // security (just how good the cryptographic security is is an open
   // question)".
@@ -178,10 +204,19 @@ void ForeachEngine(const Benchmark& benchmark) {
   RunBenchmark("MT", benchmark, eng_mt);
 }
 
-void RunAll() {
+void RunAll(int argc, char* argv[]) {
   // Immediately output any results (for non-local runs).
   setvbuf(stdout, nullptr, _IONBF, 0);
 
+  // Avoid migrating between cores - important on multi-socket systems.
+  int cpu = -1;
+  if (argc == 2) {
+    cpu = strtol(argv[1], nullptr, 10);
+  }
+  platform::PinThreadToCPU(cpu);
+
+  printf("Enable std: %d; Enable absl: %d\n", ENABLE_STD_UNIFORM_REAL,
+         USE_ABSL_DISTRIBUTIONS);
   ForeachEngine(BenchmarkLoop());
   ForeachEngine(BenchmarkShuffle());
   ForeachEngine(BenchmarkSample());
@@ -189,9 +224,9 @@ void RunAll() {
 }
 
 }  // namespace
-}  // namespace randen
+}  // namespace nanobenchmark
 
 int main(int argc, char* argv[]) {
-  randen::RunAll();
+  nanobenchmark::RunAll(argc, argv);
   return 0;
 }

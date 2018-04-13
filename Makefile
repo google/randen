@@ -1,4 +1,4 @@
-override CPPFLAGS += -I../..
+override CPPFLAGS += -I. -I../
 override CXXFLAGS += -std=c++11 -Wall -O3 -fno-pic -mavx2 -maes
 override LDFLAGS += $(CXXFLAGS)
 override CXX = clang++

@@ -15,8 +15,8 @@
 // 'Strong' (well-distributed, unpredictable, backtracking-resistant) random
 // generator, faster in some benchmarks than std::mt19937_64 and pcg64_c32.
 
-#ifndef THIRD_PARTY_RANDEN_RANDEN_H_
-#define THIRD_PARTY_RANDEN_RANDEN_H_
+#ifndef RANDEN_H_
+#define RANDEN_H_
 
 // RANDen = RANDom generator or beetroots in Swiss German.
 namespace randen {
@@ -44,8 +44,8 @@ class alignas(32) Randen {
  public:
   // C++11 URBG interface:
   using result_type = T;
-  static T min() { return T(0); }
-  static T max() { return ~T(0); }
+  static constexpr T min() { return T(0); }
+  static constexpr T max() { return ~T(0); }
 
   Randen() {
     // The first call to operator() will trigger Generate.
@@ -122,4 +122,4 @@ class alignas(32) Randen {
 
 }  // namespace randen
 
-#endif  // THIRD_PARTY_RANDEN_RANDEN_H_
+#endif  // RANDEN_H_
