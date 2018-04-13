@@ -23,6 +23,7 @@
 #include <algorithm>  // sort
 #include <atomic>
 #include <limits>
+#include <numeric>  // iota
 #include <string>
 #include <vector>
 

@@ -55,7 +55,7 @@ AES+Feistel+Reverie".
 
 ## Usage
 
-`make randen_benchmark && bin/randen_benchmark`
+`make && bin/randen_benchmark`
 
 Note that the code relies on advanced compiler optimizations. Expect about 1.6x
 worse performance than reported when using GCC 4.8, and 3x with Clang 3.4.
