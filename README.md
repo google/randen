@@ -1,9 +1,9 @@
 ## Overview
 
 What if we could default to attack-resistant random generators without excessive
-CPU cost? Thanks to hardware acceleration and a new sponge-like generator, this
-module generates numbers faster than MT19937 and pcg64_c32 in real-world
-benchmarks.
+CPU cost? We introduce 'Randen', a new generator with security guarantees; it
+outperforms MT19937 and pcg64_c32 in real-world benchmarks. This is made
+possible by AES hardware acceleration and a large Feistel permutation.
 
 ## Related work
 
@@ -21,7 +21,7 @@ backtracking resistance, but is not fast enough for a general-purpose generator
 
 ## Algorithm
 
-The algorithm has three building blocks:
+The Randen generator is based upon three existing components:
 
 1)  Reverie [https://eprint.iacr.org/2016/886.pdf] is a sponge-like generator
     that requires a cryptographic permutation. It improves upon "Provably Robust
@@ -48,10 +48,10 @@ performance advantage over pcg64_c32.
 
 ## Security
 
-Randen is empirically random, computationally infeasible to predict and
-backtracking-resistant. For more details and benchmarks, please see
+Randen is indistinguishable from random and backtracking-resistant. For more
+details and benchmarks, please see
 the paper "Randen - fast backtracking-resistant random generator with
-AES+Feistel+Reverie".
+AES+Feistel+Reverie" (pending publication).
 
 ## Usage
 
@@ -59,6 +59,18 @@ AES+Feistel+Reverie".
 
 Note that the code relies on advanced compiler optimizations. Expect about 1.6x
 worse performance than reported when using GCC 4.8, and 3x with Clang 3.4.
+This can be mitigated by manually unrolling the loops.
+
+## Third-party implementations / bindings
+
+Thanks to Frank Denis for making us aware of these third-party implementations
+or bindings. Note that the algorithm is still under review and subject to
+change, but please feel free to get in touch or raise an issue and we'll
+add yours as well.
+
+By | Language | URL
+--- | --- | ---
+Frank Denis | C | https://github.com/jedisct1/randen-rng
 
 
 This is not an official Google product.
