@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <algorithm>
 #include <random>  // seed_seq
+#include <sstream>
 
 #define UPDATE_GOLDEN 0
 #define ENABLE_VERIFY 1
@@ -25,12 +26,14 @@
 namespace randen {
 namespace {
 
-#define ASSERT_TRUE(condition)                           \
-  do {                                                   \
-    if (!(condition)) {                                  \
-      printf("Assertion failed on line %d\n", __LINE__); \
-      abort();                                           \
-    }                                                    \
+#define STR(x) #x
+
+#define ASSERT_TRUE(condition)                                                \
+  do {                                                                        \
+    if (!(condition)) {                                                       \
+      printf("Assertion [" STR(condition) "] failed on line %d\n", __LINE__); \
+      abort();                                                                \
+    }                                                                         \
   } while (false)
 
 using EngRanden = Randen<uint64_t>;
@@ -146,11 +149,137 @@ void VerifyGolden() {
 
 #endif  // ENABLE_VERIFY
 
+void VerifyRandReqEngine() {
+  // Validates that Randen satisfies [rand.req.engine].
+  // Names after definition of [rand.req.engine] in C++ standard.
+  // e is a value of E
+  // v is a lvalue of E
+  // x, y are possibly const values of E
+  // s is a value of T
+  // q is a value satisfying requirements of seed_sequence
+  // z is a value of type unsigned long long
+  // os is a some specialization of basic_ostream
+  // is is a some specialization of basic_istream
+
+  using E = EngRanden;
+  using T = typename EngRanden::result_type;
+
+  static_assert(std::is_copy_constructible<E>::value,
+                "Randen must be copy constructible");
+
+  static_assert(std::is_copy_assignable<E>::value,
+                "Randen must be copy assignable");
+
+  E e, v;
+  const E x, y;
+  T s = 1;
+  std::seed_seq q{1, 2, 3};
+  unsigned long long z = 1;  // NOLINT(runtime/int)
+  std::wostringstream os;
+  std::wistringstream is;
+
+  E{};
+  E{x};
+  E{s};
+  E{q};
+
+  // Verify that seed() and default-construct is identical.
+  e.seed();
+  {
+    E f;
+    ASSERT_TRUE(e == f);
+  }
+
+  // Verify the seed() result type.
+  static_assert(std::is_same<decltype(e.seed(s)), void>::value,
+                "return type of seed() must be void");
+
+  static_assert(std::is_same<decltype(e.seed(q)), void>::value,
+                "return type of seed() must be void");
+
+  // verify that seed via seed_sequence and construct via seed_sequence
+  // is identical.
+  e.seed(q);
+  {
+    E f{q};
+    ASSERT_TRUE(e == f);
+  }
+
+  // Verify the operator() result type.
+  static_assert(std::is_same<decltype(e()), T>::value,
+                "return type of operator() must be result_type");
+
+  // Verify that once the state has advanced that the engines
+  // are no longer equal.
+  e();
+  {
+    E f{q};
+    ASSERT_TRUE(e != f);
+  }
+
+  {
+    E f;
+    ASSERT_TRUE(e != f);
+  }
+
+  // Verify discard.
+  e.discard(z);
+  {
+    // The state equivalence should change.
+    E f, g;
+    f.discard(2);
+    ASSERT_TRUE(f != g);
+
+    g();
+    g();
+    ASSERT_TRUE(f == g);
+  }
+
+  // Verify operator == result types.
+  static_assert(std::is_same<decltype(x == y), bool>::value,
+                "return type of operator== must be bool");
+
+  static_assert(std::is_same<decltype(x != y), bool>::value,
+                "return type of operator!= must be bool");
+
+  // Verify operator<<() result.
+  {
+    auto& os2 = (os << e);
+    ASSERT_TRUE(&os2 == &os);
+  }
+
+  // Verify operator>>() result.
+  {
+    auto& is2 = (is >> e);
+    ASSERT_TRUE(&is2 == &is);
+  }
+}
+
+void VerifyStreamOperators() {
+  EngRanden engine1(171);
+  EngRanden engine2;
+
+  {
+    std::stringstream stream;
+    stream << engine1;
+    stream >> engine2;
+  }
+
+  const int N = 56;  // two buffer's worth
+  for (int i = 0; i < N; ++i) {
+    const uint64_t r1 = engine1();
+    const uint64_t r2 = engine2();
+    ASSERT_TRUE(r1 == r2);
+  }
+}
+
 void Verify() {
 #if ENABLE_VERIFY
   VerifyReseedChangesAllValues();
   VerifyDiscard();
   VerifyGolden();
+  VerifyRandReqEngine();
+  VerifyStreamOperators();
 #endif
 }
 

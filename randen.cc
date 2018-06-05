@@ -260,7 +260,7 @@ void Internal::Absorb(const void* seed_void, void* state_void) {
 
   constexpr int kCapacityBlocks = kCapacityBytes / sizeof(V);
   static_assert(kCapacityBlocks * sizeof(V) == kCapacityBytes, "Not i*V");
-  for (int i = kCapacityBlocks; i < kStateBytes / sizeof(V); ++i) {
+  for (size_t i = kCapacityBlocks; i < kStateBytes / sizeof(V); ++i) {
     V block = Load(state, i);
     block ^= Load(seed, i - kCapacityBlocks);
     Store(block, state, i);

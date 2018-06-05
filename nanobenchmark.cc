@@ -30,7 +30,9 @@
 // Architecture
 #if defined(__x86_64__) || defined(_M_X64)
 #define NB_ARCH_X86
-#if !defined(_MSC_VER)
+#if defined(_MSC_VER)
+#include <intrin.h>
+#else
 #include <cpuid.h>  // NOLINT
 #endif
 #elif defined(__powerpc64__) || defined(_M_PPC)
@@ -54,7 +56,7 @@
 #error "Please add support for this OS"
 #endif
 
-namespace nanobenchmark {
+namespace randen {
 namespace platform {
 namespace {
 
@@ -551,7 +553,8 @@ Ticks SampleUntilStable(const double max_rel_mad, double* rel_mad,
   Ticks t1 = timer::Stop32();
   Ticks est = t1 - t0;
   static const double ticks_per_second = platform::InvariantTicksPerSecond();
-  const size_t ticks_per_eval = ticks_per_second * p.seconds_per_eval;
+  const size_t ticks_per_eval =
+      static_cast<size_t>(ticks_per_second * p.seconds_per_eval);
   size_t samples_per_eval = ticks_per_eval / est;
   samples_per_eval = std::max(samples_per_eval, p.min_samples_per_eval);
 
@@ -627,7 +630,7 @@ size_t NumSkip(const Func func, const uint8_t* arg, const InputVec& unique,
     const uint64_t t1 = timer::Stop64();
     const uint64_t elapsed = t1 - t0;
     if (elapsed >= (1ULL << 30)) {
-      fprintf(stderr, "Measurement failed: need 64-bit timer for input=%lu\n",
+      fprintf(stderr, "Measurement failed: need 64-bit timer for input=%zu\n",
               input);
       return 0;
     }
@@ -783,10 +786,10 @@ size_t Measure(const Func func, const uint8_t* arg, const FuncInput* inputs,
     const Ticks duration = (total - overhead) - (total_skip - overhead_skip);
     results[i].input = unique[i];
     results[i].ticks = duration * mul;
-    results[i].variability = max_rel_mad;
+    results[i].variability = static_cast<float>(max_rel_mad);
   }
 
   return unique.size();
 }
 
-}  // namespace nanobenchmark
+}  // namespace randen

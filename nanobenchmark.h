@@ -52,7 +52,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-namespace nanobenchmark {
+namespace randen {
 
 namespace platform {
 
@@ -169,6 +169,6 @@ static inline size_t MeasureClosure(const Closure& closure,
                  results, p);
 }
 
-}  // namespace nanobenchmark
+}  // namespace randen
 
 #endif  // NANOBENCHMARK_H_

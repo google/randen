@@ -12,34 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <smmintrin.h>  // SSE4
 #include <stdio.h>
-#include <stdlib.h>     // abort
 #include <unistd.h>     // sleep
-#include <wmmintrin.h>  // AES
 
 #include "nanobenchmark.h"
 #include "randen.h"
+#include "util.h"
+#include "vector128.h"
 
-#define ASSERT_TRUE(condition)                     \
-  while (!(condition)) {                           \
-    printf("Check failed at line %d\n", __LINE__); \
-    abort();                                       \
-  }
-
-namespace nanobenchmark {
+namespace randen {
 namespace {
 
 uint64_t AES(const void*, const FuncInput num_rounds) {
   // Ensures multiple invocations are serially dependent, otherwise we're
   // measuring the throughput rather than latency.
-  static __m128i prev;
-  __m128i m = prev;
+  static V prev;
+  V m = prev;
   for (size_t i = 0; i < num_rounds; ++i) {
-    m = _mm_aesenc_si128(m, m);
+    m = AES(m, m);
   }
   prev = m;
-  return _mm_cvtsi128_si64(m);
+  alignas(16) uint64_t lanes[2];
+  Store(m, lanes, 0);
+  return lanes[0];
 }
 
 template <size_t N>
@@ -73,7 +68,7 @@ void MeasureDiv(const FuncInput (&inputs)[N]) {
   }
 }
 
-randen::Randen<uint32_t> rng;
+Randen<uint32_t> rng;
 
 // A function whose runtime depends on rng.
 uint64_t Random(const void* arg, FuncInput in) {
@@ -90,7 +85,7 @@ void MeasureRandom(const FuncInput (&inputs)[N]) {
   p.verbose = false;
   const size_t num_results = Measure(&Random, nullptr, inputs, N, results, p);
   for (size_t i = 0; i < num_results; ++i) {
-    ASSERT_TRUE(results[i].variability > 1E-3);
+    RANDEN_CHECK(results[i].variability > 1E-3);
   }
 }
 
@@ -107,7 +102,7 @@ void EnsureLongMeasurementFails(const FuncInput (&inputs)[N]) {
         return input;
       },
       inputs, N, results);
-  ASSERT_TRUE(num_results == 0);
+  RANDEN_CHECK(num_results == 0);
 }
 
 void RunAll(const int argc, char* argv[]) {
@@ -130,9 +125,9 @@ void RunAll(const int argc, char* argv[]) {
 }
 
 }  // namespace
-}  // namespace nanobenchmark
+}  // namespace randen
 
 int main(int argc, char* argv[]) {
-  nanobenchmark::RunAll(argc, argv);
+  randen::RunAll(argc, argv);
   return 0;
 }

@@ -57,9 +57,9 @@ AES+Feistel+Reverie" (pending publication).
 
 `make && bin/randen_benchmark`
 
-Note that the code relies on advanced compiler optimizations. Expect about 1.6x
-worse performance than reported when using GCC 4.8, and 3x with Clang 3.4.
-This can be mitigated by manually unrolling the loops.
+Note that the code relies on compiler optimizations. Cycles per byte may
+increase by factors of 1.6 when compiled with GCC 7.3, and 1.3 with
+Clang 4.0.1. This can be mitigated by manually unrolling the loops.
 
 ## Third-party implementations / bindings
 
