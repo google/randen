@@ -38,7 +38,7 @@
 #elif defined(__powerpc64__) || defined(_M_PPC)
 #define NB_ARCH_PPC
 #include <sys/platform/ppc.h>  // NOLINT __ppc_get_timebase_freq
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) || defined(__arm__)
 #define NB_ARCH_ARM
 #else
 #error "Please add support for this architecture"
@@ -305,7 +305,7 @@ inline uint64_t Start64() {
 #else
   // Fall back to OS - unsure how to reliably query cntvct_el0 frequency.
   timespec ts;
-  clock_gettime(CLOCK_REALTIME, &ts);
+  clock_gettime(CLOCK_MONOTONIC, &ts);
   t = ts.tv_sec * 1000000000LL + ts.tv_nsec;
 #endif
   return t;
