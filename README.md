@@ -48,13 +48,14 @@ x86 microbenchmark results (cpb=cycles per byte, MAD=median absolute deviation):
 
 RNG | cpb | MAD
 --- | --- | ---
-Randen    |  1.54 | 0.002
-pcg64_c32 |  0.78 | 0.003
-mt19937_64|  1.79 | 0.001
-ISAAC     |  4.08 | 0.006
-Philox    |  4.70 | 0.003
-ChaCha20  | 15.27 | 0.018
-CTR-DRBG  | 16.80 | 0.009
+Randen          |  1.54 | 0.002
+pcg64_c32       |  0.78 | 0.003
+mt19937_64      |  1.79 | 0.001
+ChaCha8         |  3.02 | 0.003
+ISAAC           |  4.08 | 0.006
+Philox          |  4.70 | 0.003
+/dev/urandom (ChaCha20)    | 15.27 | 0.018
+BCryptGenRandom (CTR-DRBG) | 16.80 | 0.009
 
 x86 real-world benchmark (reservoir sampling):
 
@@ -63,10 +64,11 @@ RNG | cpb | MAD
 Randen    |  2.60 | 0.008
 pcg64_c32 |  3.03 | 0.009
 mt19937_64|  2.82 | 0.009
+ChaCha8   |  3.75 | 0.008
 ISAAC     |  4.46 | 0.014
 Philox    |  4.95 | 0.009
-ChaCha20  | 13.46 | 0.017
-CTR-DRBG  | 16.41 | 0.015
+/dev/urandom (ChaCha20)    | 13.46 | 0.017
+BCryptGenRandom (CTR-DRBG) | 16.41 | 0.015
 
 ## Security
 
