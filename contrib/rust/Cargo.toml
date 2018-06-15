@@ -1,0 +1,8 @@
+[package]
+name = "randen"
+version = "0.0.0"
+authors = ["Ruud van Asseldonk <ruud@veniogames.com>"]
+
+[dependencies.rand]
+version = "0.5.1"
+features = ["i128_support"]
