@@ -2,8 +2,9 @@
 
 What if we could default to attack-resistant random generators without excessive
 CPU cost? We introduce 'Randen', a new generator with security guarantees; it
-outperforms MT19937 and pcg64_c32 in real-world benchmarks. This is made
-possible by AES hardware acceleration and a large Feistel permutation.
+outperforms MT19937, pcg64_c32, Philox, ISAAC and ChaCha8 in real-world
+benchmarks. This is made possible by AES hardware acceleration and a large
+Feistel permutation.
 
 ## Related work
 
@@ -30,7 +31,7 @@ The Randen generator is based upon three existing components:
 
 2)  Simpira v2 [https://eprint.iacr.org/2016/122.pdf] constructs up to 1024-bit
     permutations using an improved Generalized Feistel network with 2-round
-    AES-128 functions. This Feistel block shuffle achieves diffusion faster and
+    AES-128 functions. This Feistel block shuffle achieves diffusion sooner and
     is less vulnerable to sliced-biclique attacks than a Type-2 cyclic shuffle.
 
 3)  "New criterion for diffusion property" [https://goo.gl/mLXH4f] shows that
@@ -41,10 +42,31 @@ We combine these by plugging the larger Simpira-like permutation into Reverie.
 
 ## Performance
 
-The implementation targets x86 (Westmere), POWER 8 and ARM64. Microbenchmarks
-report 1.55 and 2.94 cycles per byte on the first two platforms (faster than
-Mersenne Twister). Real-world applications (shuffling and sampling) indicate a
-performance advantage over pcg64_c32.
+The implementation targets x86 (Westmere), POWER 8 and ARM64.
+
+x86 microbenchmark results (cpb=cycles per byte, MAD=median absolute deviation):
+
+RNG | cpb | MAD
+--- | --- | ---
+Randen    |  1.54 | 0.002
+pcg64_c32 |  0.78 | 0.003
+mt19937_64|  1.79 | 0.001
+ISAAC     |  4.08 | 0.006
+Philox    |  4.70 | 0.003
+ChaCha20  | 15.27 | 0.018
+CTR-DRBG  | 16.80 | 0.009
+
+x86 real-world benchmark (reservoir sampling):
+
+RNG | cpb | MAD
+--- | --- | ---
+Randen    |  2.60 | 0.008
+pcg64_c32 |  3.03 | 0.009
+mt19937_64|  2.82 | 0.009
+ISAAC     |  4.46 | 0.014
+Philox    |  4.95 | 0.009
+ChaCha20  | 13.46 | 0.017
+CTR-DRBG  | 16.41 | 0.015
 
 ## Security
 
