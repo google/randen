@@ -16,46 +16,20 @@
 #define ENGINE_OS_H_
 
 #ifdef _WIN64
-#define _CRT_RAND_S
-#include <stdlib.h>
 #define NOMINMAX
-#include <bcrypt.h>
 #include <windows.h>
+// Must come after windows.h; this comment ensures that.
+#include <bcrypt.h>
+#pragma comment(lib, "bcrypt")
 #endif
 
 #include "util.h"
 
 namespace randen {
 
-#ifdef _WIN64
-
-// Windows-specific: calls rand_s. Slow.
-class EngineRandS {
-  using T = uint32_t;
-
- public:
-  // C++11 URBG interface:
-  using result_type = T;
-  static constexpr T min() { return T(0); }
-  static constexpr T max() { return ~T(0); }
-
-  EngineRandS() = default;
-
-  // Returns random bits from the buffer in units of T.
-  T operator()() {
-    T ret;
-    rand_s(&ret);
-    return ret;
-  }
-};
-
-#endif  // _WIN64
-
 // Buffered, uses OS CSPRNG.
 template <typename T>
 class alignas(32) EngineOS {
-  using U64 = unsigned long long;
-
  public:
   // C++11 URBG interface:
   using result_type = T;
@@ -86,7 +60,7 @@ class alignas(32) EngineOS {
   // Returns random bits from the buffer in units of T.
   T operator()() {
     // (Local copy ensures compiler knows this is not aliased.)
-    U64 next = next_;
+    size_t next = next_;
 
     // Refill the buffer if needed (unlikely).
     if (next >= kStateT) {
@@ -107,10 +81,10 @@ class alignas(32) EngineOS {
   }
 
  private:
-  static constexpr U64 kStateT = 256 / sizeof(T);  // same as Randen
+  static constexpr size_t kStateT = 256 / sizeof(T);  // same as Randen
 
   alignas(32) T state_[kStateT];
-  U64 next_;  // index within state_
+  size_t next_;  // index within state_
 #ifdef _WIN32
   BCRYPT_ALG_HANDLE provider_;
 #else
