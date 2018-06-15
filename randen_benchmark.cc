@@ -24,7 +24,7 @@
 #define ENABLE_RANDEN 1
 #define ENABLE_PCG 1
 #define ENABLE_MT 1
-#define ENABLE_PHILOX 1
+#define ENABLE_CHACHA 1
 #define ENABLE_OS 1
 
 #if ENABLE_PCG
@@ -33,6 +33,10 @@
 
 #if ENABLE_MT
 #include <random>
+#endif
+
+#if ENABLE_CHACHA
+#include "engine_chacha.h"
 #endif
 
 #if ENABLE_OS
@@ -78,14 +82,17 @@ class UniformInt {
   // Engine is a C++11 UniformRandomBitGenerator returning >= 32 bits.
   template <class Engine>
   result_type operator()(Engine& engine, const param_type param) const {
-    static_assert(sizeof(decltype(engine())) >= sizeof(uint32_t), "Too few");
+    using Bits = decltype(engine());  // == typename Engine::result_type
+    static_assert(std::is_same<uint32_t, Bits>::value ||
+                      std::is_same<uint64_t, Bits>::value,
+                  "Need u32 or u64");
 
     // We assume range < pow(2, sizeof(decltype(engine()))*8).
     const result_type range = param.end - param.begin;
 
     // Division-free with high probability. Algorithm and variable names are
     // from https://arxiv.org/pdf/1805.10941.pdf.
-    result_type x = engine();
+    result_type x = engine();  // (possibly a narrowing conversion from Bits)
     result_type hi, lo;
     Multiply(x, range, &hi, &lo);
     // Rejected, try again (unlikely for small ranges).
@@ -101,7 +108,7 @@ class UniformInt {
   }
 
  private:
-  static result_type Negate(result_type x) {
+  static constexpr result_type Negate(result_type x) {
     return ~x + 1;  // assumes two's complement.
   }
 
@@ -256,7 +263,7 @@ class BenchmarkMonteCarlo {
 template <class Benchmark, class Engine>
 void RunBenchmark(const char* caption, Engine& engine, const int unpredictable1,
                   const Benchmark& benchmark) {
-  printf("%6s: ", caption);
+  printf("%8s: ", caption);
   const size_t kNumInputs = 1;
   const FuncInput inputs[kNumInputs] = {
       static_cast<FuncInput>(Benchmark::Num64() * unpredictable1)};
@@ -310,6 +317,11 @@ void ForeachEngine(const int unpredictable1) {
   RunBenchmark("MT", eng_mt, unpredictable1, benchmark);
 #endif
 
+
+#if ENABLE_CHACHA
+  ChaCha<T> eng_chacha(0x243f6a8885a308d3ull, 0x243F6A8885A308D3ull);
+  RunBenchmark("ChaCha8", eng_chacha, unpredictable1, benchmark);
+#endif
 
 #if ENABLE_OS
   EngineOS<T> eng_os;
