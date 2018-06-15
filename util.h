@@ -19,6 +19,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
+
 #define RANDEN_CHECK(condition)                          \
   do {                                                   \
     if (!(condition)) {                                  \
@@ -32,7 +36,7 @@ namespace randen {
 // "x" != 0.
 static inline int NumZeroBitsAboveMSBNonzero(const uint64_t x) {
 #ifdef _MSC_VER
-  return __lzcnt64(x);  // WARNING: requires BMI2
+  return static_cast<int>(__lzcnt64(x));  // WARNING: requires BMI2
 #else
   return __builtin_clzll(x);
 #endif
