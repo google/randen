@@ -363,22 +363,15 @@ impl Rng for RandenRng {
 
 impl<'a> SeedableRng<&'a [U128A; SEED_LEN]> for RandenRng {
     fn reseed(&mut self, seed: &'a [U128A; SEED_LEN]) {
-        // TODO: It is not clear from the `SeedableRng::reseed()` docs whether
-        // this method should reset the state (i.e. it should behave as
-        // `self = from_seed(reed)`), or mix the seed.
+        self.state = [U128A(0); STATE_LEN];
+        self.cursor = STATE_BYTES;
         randen_absorb(&mut self.state, seed);
     }
 
     fn from_seed(seed: &'a [U128A; SEED_LEN]) -> RandenRng {
-        let mut state = [U128A(0); STATE_LEN];
-        randen_absorb(&mut state, seed);
-        RandenRng {
-            state: state,
-            // Set the cursor to indicate that the state is fully consumed, to
-            // enforce a generate before returning any bytes. This way the
-            // initial seed values are not exposed as random numbers.
-            cursor: STATE_BYTES,
-        }
+        let mut rng = RandenRng::new_unseeded();
+        randen_absorb(&mut rng.state, seed);
+        rng
     }
 }
 
@@ -395,8 +388,8 @@ impl Rand for RandenRng {
 
 #[cfg(test)]
 mod test {
-    use rand::Rng;
-    use super::RandenRng;
+    use rand::{Rng, SeedableRng};
+    use super::{RandenRng, U128A};
 
     #[test]
     fn randen_rng_next_u64_test_vectors() {
@@ -561,5 +554,18 @@ mod test {
         assert_eq!(seq_1[36], 186);
         assert_eq!(seq_2[150], 112);
         assert_eq!(seq_3[232], 24);
+    }
+
+    #[test]
+    fn randen_rng_reseed_from_seed_equivalence() {
+        // We enforce that `from_seed` and `reseed` yield equivalent
+        // generators without reifying a particular sequence.
+        let seed = [U128A(1); 15];
+        let mut reseeded = RandenRng::new_unseeded();
+        reseeded.reseed(&seed);
+        let mut constructed = RandenRng::from_seed(&seed);
+        for _ in 0..100 {
+            assert_eq!(reseeded.next_u64(), constructed.next_u64());
+        }
     }
 }
