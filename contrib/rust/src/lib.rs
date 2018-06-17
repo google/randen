@@ -5,7 +5,7 @@ extern crate rand;
 use std::mem;
 use std::ops::BitXorAssign;
 
-use rand::{Error, RngCore, SeedableRng};
+use rand::{Error, FromEntropy, RngCore, SeedableRng};
 use std::arch::x86_64::{__m128i, _mm_aesenc_si128};
 
 /// Size of the entire sponge / state for the Randen PRNG.
