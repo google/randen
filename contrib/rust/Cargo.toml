@@ -8,5 +8,5 @@ repository = "https://github.com/google/randen"
 keywords = [ "Crypto", "rng", "random" ]
 
 [dependencies.rand]
-version = "0.4"
+version = "0.5"
 features = ["i128_support"]

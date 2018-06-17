@@ -5,8 +5,8 @@ extern crate rand;
 use std::mem;
 use std::ops::BitXorAssign;
 
+use rand::{Error, RngCore, SeedableRng};
 use std::arch::x86_64::{__m128i, _mm_aesenc_si128};
-use rand::{Rand, Rng, SeedableRng};
 
 /// Size of the entire sponge / state for the Randen PRNG.
 const STATE_LEN: usize = 16; // 256 bytes, 16x16 bytes.
@@ -18,6 +18,7 @@ const CAPACITY: usize = 1; // 1x16 bytes.
 
 /// Size of the default seed consumed by the sponge.
 const SEED_LEN: usize = STATE_LEN - CAPACITY;
+const SEED_BYTES: usize = SEED_LEN * 16;
 
 const STATE_BYTES: usize = STATE_LEN * 16;
 const CAPACITY_BYTES: usize = CAPACITY * 16;
@@ -205,7 +206,6 @@ const ROUND_KEYS: [U128A; ROUND_KEYS_LEN] = [
     U128A(0x411520F77602D4F7F64C261C94692934),
     U128A(0xD40824713320F46ABCF46B2ED4A10068),
     U128A(0x1E39F62E9724454643B7D4B7500061AF),
-
 ];
 
 pub type State = [U128A; STATE_LEN];
@@ -334,7 +334,7 @@ macro_rules! impl_next {
     }
 }
 
-impl Rng for RandenRng {
+impl RngCore for RandenRng {
     impl_next!(next_u32, u32, 4);
     impl_next!(next_u64, u64, 8);
 
@@ -359,37 +359,46 @@ impl Rng for RandenRng {
             i += consume_bytes;
         }
     }
+
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+        Ok(self.fill_bytes(dest))
+    }
 }
 
-impl<'a> SeedableRng<&'a [U128A; SEED_LEN]> for RandenRng {
-    fn reseed(&mut self, seed: &'a [U128A; SEED_LEN]) {
-        self.state = [U128A(0); STATE_LEN];
-        self.cursor = STATE_BYTES;
-        randen_absorb(&mut self.state, seed);
-    }
+pub struct RandenSeed(pub [u8; SEED_BYTES]);
 
-    fn from_seed(seed: &'a [U128A; SEED_LEN]) -> RandenRng {
+impl Default for RandenSeed {
+    fn default() -> RandenSeed {
+        RandenSeed([0; SEED_BYTES])
+    }
+}
+
+impl AsMut<[u8]> for RandenSeed {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl SeedableRng for RandenRng {
+    type Seed = RandenSeed;
+
+    fn from_seed(seed: RandenSeed) -> RandenRng {
         let mut rng = RandenRng::new_unseeded();
-        randen_absorb(&mut rng.state, seed);
-        rng
-    }
-}
-
-impl Rand for RandenRng {
-    fn rand<R: Rng>(other: &mut R) -> RandenRng {
-        let mut seed = [U128A(0); SEED_LEN];
-        for elem in seed.iter_mut() {
-            *elem = U128A(other.gen());
+        unsafe {
+            // [u8] isn't necessarily 16 byte aligned. Transmuting it to [U128]
+            // won't fix the alignment, but a subsequent clone should work.
+            let unaligned_seed = std::mem::transmute::<[u8; SEED_BYTES], [U128A; SEED_LEN]>(seed.0);
+            let aligned_seed = unaligned_seed.clone();
+            randen_absorb(&mut rng.state, &aligned_seed);
+            rng
         }
-        SeedableRng::from_seed(&seed)
     }
 }
-
 
 #[cfg(test)]
 mod test {
-    use rand::{Rng, SeedableRng};
     use super::{RandenRng, U128A};
+    use rand::{RngCore, SeedableRng};
 
     #[test]
     fn randen_rng_next_u64_test_vectors() {
@@ -554,18 +563,5 @@ mod test {
         assert_eq!(seq_1[36], 186);
         assert_eq!(seq_2[150], 112);
         assert_eq!(seq_3[232], 24);
-    }
-
-    #[test]
-    fn randen_rng_reseed_from_seed_equivalence() {
-        // We enforce that `from_seed` and `reseed` yield equivalent
-        // generators without reifying a particular sequence.
-        let seed = [U128A(1); 15];
-        let mut reseeded = RandenRng::new_unseeded();
-        reseeded.reseed(&seed);
-        let mut constructed = RandenRng::from_seed(&seed);
-        for _ in 0..100 {
-            assert_eq!(reseeded.next_u64(), constructed.next_u64());
-        }
     }
 }
