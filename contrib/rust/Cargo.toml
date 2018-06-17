@@ -1,8 +1,12 @@
 [package]
 name = "randen"
 version = "0.0.0"
-authors = ["Ruud van Asseldonk <ruud@veniogames.com>"]
+authors = ["Ruud van Asseldonk <ruud@veniogames.com>", "Jan Wassenberg <janwas@google.com>", "Brendan Hickey <bhickey@google.com>"]
+license = "Apache-2.0"
+description = "Randen is a fast, backtracking resistant CSPRNG."
+repository = "https://github.com/google/randen"
+keywords = [ "Crypto", "rng", "random" ]
 
 [dependencies.rand]
-version = "0.4"
+version = "0.5"
 features = ["i128_support"]
