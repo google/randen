@@ -44,7 +44,8 @@ We combine these by plugging the larger Simpira-like permutation into Reverie.
 
 The implementation targets x86 (Westmere), POWER 8 and ARM64.
 
-x86 microbenchmark results (cpb=cycles per byte, MAD=median absolute deviation):
+x86 microbenchmark: generating random bits in a tight loop
+(cpb=cycles per byte, MAD=median absolute deviation):
 
 RNG | cpb | MAD
 --- | --- | ---

@@ -24,7 +24,11 @@
 #define ENABLE_RANDEN 1
 #define ENABLE_PCG 1
 #define ENABLE_MT 1
+#if defined(__SSE2__) && defined(__AES__)
 #define ENABLE_CHACHA 1
+#else
+#define ENABLE_CHACHA 0
+#endif
 #define ENABLE_OS 1
 
 #if ENABLE_PCG

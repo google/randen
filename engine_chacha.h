@@ -14,6 +14,7 @@
 
 #ifndef ENGINE_CHACHA_H_
 #define ENGINE_CHACHA_H_
+#if defined(__SSE2__) && defined(__AES__)
 
 #include <cstdint>
 #include <limits>
@@ -186,4 +187,5 @@ class ChaCha {
 
 }  // namespace randen
 
+#endif  // defined(__SSE2__) && defined(__AES__)
 #endif  // ENGINE_CHACHA_H_
