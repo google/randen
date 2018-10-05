@@ -14,6 +14,7 @@
 
 // 'Strong' (indistinguishable from random, backtracking-resistant) random
 // generator, faster in some benchmarks than std::mt19937_64 and pcg64_c32.
+// Accompanying paper: https://arxiv.org/abs/1810.02227
 
 #ifndef RANDEN_H_
 #define RANDEN_H_

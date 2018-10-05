@@ -74,9 +74,8 @@ BCryptGenRandom (CTR-DRBG) | 16.41 | 0.015
 ## Security
 
 Randen is indistinguishable from random and backtracking-resistant. For more
-details and benchmarks, please see
-the paper "Randen - fast backtracking-resistant random generator with
-AES+Feistel+Reverie" (pending publication).
+details and benchmarks, please see ["Randen - fast backtracking-resistant random
+generator with AES+Feistel+Reverie"](https://arxiv.org/abs/1810.02227).
 
 ## Usage
 
